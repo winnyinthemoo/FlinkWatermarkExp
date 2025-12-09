@@ -34,11 +34,6 @@
                   <exclude>log4j:*</exclude>
                 </excludes>
               </artifactSet>
-              <transformers>
-                <transformer>
-                  <mainClass>com.hazel.watermark.LongRideDetectJob</mainClass>
-                </transformer>
-              </transformers>
             </configuration>
           </execution>
         </executions>
