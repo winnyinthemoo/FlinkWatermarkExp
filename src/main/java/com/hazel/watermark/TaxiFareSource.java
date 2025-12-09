@@ -59,7 +59,7 @@ public class TaxiFareSource implements SourceFunction<TaxiFare> {
                     ctx.collect(fareObj);
                 }
 
-                //Thread.sleep(50);
+                Thread.sleep(50);
             }
         }
     }

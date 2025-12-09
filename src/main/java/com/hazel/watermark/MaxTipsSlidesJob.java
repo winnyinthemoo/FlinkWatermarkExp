@@ -3,7 +3,6 @@ package com.hazel.watermark;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
@@ -15,9 +14,8 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
-import scala.Int;
 
-public class MaxTipsJob {
+public class MaxTipsSlidesJob {
 
     public static void main(String[] args) throws Exception {
 
@@ -70,7 +68,7 @@ public class MaxTipsJob {
         int finalWatermarkMinutes = watermarkMinutes;
         SingleOutputStreamOperator<Tuple4<Long, String, Float, Long>> sumById = mapStream
                 .keyBy(t -> t.f0)
-                .timeWindow(Time.hours(1))
+                .timeWindow(Time.hours(1), Time.minutes(30))
                 .allowedLateness(Time.seconds(0))
                 .sideOutputLateData(lateTag)
                 .process(new ProcessWindowFunction<Tuple2<String, Float>, Tuple4<Long, String, Float,Long>, String, TimeWindow>() {
@@ -85,16 +83,14 @@ public class MaxTipsJob {
                         }
                         long windowStart = context.window().getStart();
                         long watermark=context.currentWatermark();
-                        long delay;
+                        long delay= watermark+ (long) finalWatermarkMinutes *60*1000 -context.window().getEnd();
                         if(watermark == Long.MAX_VALUE) {
                             delay = -1; //special
                         }
-                        else{
-                            delay= watermark+ (long) finalWatermarkMinutes *60*1000 -context.window().getEnd();
-                        }
                         out.collect(new Tuple4<>(windowStart, key, sum, delay));
                     }
-                }).setParallelism(4);
+                })
+                .setParallelism(4);
 
         // 迟到数据统计
         DataStream<Tuple2<String, Float>> lateStream = sumById.getSideOutput(lateTag);
@@ -106,7 +102,7 @@ public class MaxTipsJob {
                 .setParallelism(1);
 
         lateCount.print("Total Late Data");
-        sumById.addSink(new SingleFileSink("C:\\Users\\Public\\window_result_"+ Integer.toString(watermarkMinutes)+".txt")).setParallelism(4);
+        sumById.addSink(new SingleFileSink("C:\\Users\\Public\\slide_window_result_"+Integer.toString(watermarkMinutes)+".txt")).setParallelism(4);
 
         // 10. 执行任务
         env.execute("Flink Watermark Experiment");

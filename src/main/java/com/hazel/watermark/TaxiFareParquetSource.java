@@ -1,6 +1,7 @@
 package com.hazel.watermark;
 
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.parquet.hadoop.ParquetReader;
 import org.apache.parquet.avro.AvroParquetReader;
 
@@ -12,18 +13,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.PriorityQueue;
 
-public class TaxiRideParquetSource implements SourceFunction<TaxiRide> {
+public class TaxiFareParquetSource implements SourceFunction<TaxiFare> {
 
     private final String parquetPath;
+    private final long watermarkDelayMs;
     private static final int BATCH_SIZE = 5;
     private volatile boolean running = true;
 
-    public TaxiRideParquetSource(String parquetPath) {
+    public TaxiFareParquetSource(String parquetPath,long WatermarkDelayMs) {
         this.parquetPath = parquetPath;
+        this.watermarkDelayMs = WatermarkDelayMs;
     }
 
     @Override
-    public void run(SourceContext<TaxiRide> ctx) throws Exception {
+    public void run(SourceContext<TaxiFare> ctx) throws Exception {
 
         ParquetReader<GenericRecord> reader = AvroParquetReader
                 .<GenericRecord>builder(new Path(parquetPath))
@@ -32,8 +35,6 @@ public class TaxiRideParquetSource implements SourceFunction<TaxiRide> {
         GenericRecord record;
         long rideId = 0;
         long maxStartTime = 0;
-        List<TaxiRide> startEvents = new ArrayList<TaxiRide>(BATCH_SIZE);
-        PriorityQueue<TaxiRide> endEventQ = new PriorityQueue<>(100);
 
         while (running && (record = reader.read())!=null) {
 
@@ -42,47 +43,36 @@ public class TaxiRideParquetSource implements SourceFunction<TaxiRide> {
             long pickupMills = ((Number) record.get("tpep_pickup_datetime")).longValue()/1000;
             long dropoffMills = ((Number) record.get("tpep_dropoff_datetime")).longValue()/1000;
             long vendor_id=((Number) record.get("VendorID")).longValue();
+            long tip=((Number) record.get("tip_amount")).longValue();
+            long fare=((Number) record.get("total_amount")).longValue();
 
             // 转换为毫秒（Instant.ofEpochMilli 需要毫秒）
             Instant pickupTime = Instant.ofEpochMilli(pickupMills);
             Instant dropoffTime = Instant.ofEpochMilli(dropoffMills);
 
             // 1) Emit START event
-            TaxiRide startEvent = new TaxiRide(
-                    rideId,
-                    true,
-                    pickupMills,
-                    vendor_id
+            TaxiFare startEvent = new TaxiFare(
+                    Long.toString(rideId),
+                    Long.toString(vendor_id),
+                    pickupTime,
+                    tip,
+                    fare
             );
             ctx.collect(startEvent);
-            //startEvents.add(startEvent);
+//            long wm = pickupTime.toEpochMilli() - watermarkDelayMs;
+//            if (wm < 0) {
+//                wm = 0;
+//            }
+//            ctx.collectWithTimestamp(startEvent, pickupTime.toEpochMilli());
+//            ctx.emitWatermark(new Watermark(wm));
+//            //startEvents.add(startEvent);
             maxStartTime = Math.max(maxStartTime, startEvent.getEventTimeMillis());
 
-            // 2) Emit END event
-            TaxiRide endEvent = new TaxiRide(
-                    rideId,
-                    false,
-                    dropoffMills,
-                    vendor_id
-            );
-            ctx.collect(endEvent);
+            // 2) Emit END eventctx.collect(endEvent);
             rideId++;
-            if(rideId % 1000 == 0) {
+            if(rideId % 10 == 0) {
                 Thread.sleep(10);
             }
-//            endEventQ.add(endEvent);
-//            rideId++;
-//
-//            if(rideId % BATCH_SIZE == 0) {
-//                while (endEventQ.peek().getEventTimeMillis() <= maxStartTime) {
-//                    TaxiRide ride = endEventQ.poll();
-//                    ctx.collect(ride);
-//                }
-//                startEvents.iterator().forEachRemaining(r -> ctx.collect(r));
-//                startEvents.clear();
-//                maxStartTime=0;
-//            }
-            // Optional speed control
             // Thread.sleep(5);
         }
     }
@@ -92,4 +82,3 @@ public class TaxiRideParquetSource implements SourceFunction<TaxiRide> {
         running = false;
     }
 }
-

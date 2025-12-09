@@ -9,10 +9,10 @@ import java.util.Objects;
 
 public class TaxiFare implements Serializable {
 
-    /** Default constructor */
-    public TaxiFare() {
-        this.startTime = Instant.now();
-    }
+//    /** Default constructor */
+//    public TaxiFare() {
+//        this.startTime = Instant.now();
+//    }
 
     /** Constructor used for CSV parsing */
     public TaxiFare(
