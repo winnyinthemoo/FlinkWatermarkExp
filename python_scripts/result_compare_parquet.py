@@ -5,7 +5,7 @@ import numpy as np
 # Config
 # -----------------------------
 PARQUET_FILE = "C:\\Users\\alex\\Downloads\\yellow_tripdata_2024-02_first300k.parquet"
-FLINK_OUTPUT_FILE = "D:\\FlinkWatermarkExp\\experiment_result\\window_result_60.txt"
+FLINK_OUTPUT_FILE = "D:\\FlinkWatermarkExp\\experiment_data\\window_result_25.txt"
 
 TIME_COL = 'tpep_pickup_datetime'
 TAXI_COL = 'VendorID'
