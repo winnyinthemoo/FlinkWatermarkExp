@@ -2,63 +2,70 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# -----------------------------
-# 1. 加载你的数据（示例）
-# -----------------------------
-# 假设你的数据是 CSV，包含 'timestamp' 列（格式如 "12:50"）
-# df = pd.read_csv('your_data.csv')
-# 为演示，我们生成模拟数据：
 TIME_COL = 'tpep_pickup_datetime'
 TAXI_COL = 'VendorID'
 TIP_COL = "tip_amount"
 WINDOW_HOURS = 1
 
-# -----------------------------
-# 1. Load Ground Truth
-# -----------------------------
 df = pd.read_parquet("C:\\Users\\alex\\Downloads\\yellow_tripdata_2024-02_first300k.parquet")
-# 只保留 2024-12-01 到 2024-12-10 的数据
+
+# 过滤日期
 start_date = pd.Timestamp('2024-1-01')
 end_date = pd.Timestamp('2024-4-10')
-
 df = df[(df[TIME_COL] >= start_date) & (df[TIME_COL] <= end_date)].copy()
+
 # 转换时间格式
 df[TIME_COL] = pd.to_datetime(df[TIME_COL], format="%m/%d/%Y %I:%M:%S %p", utc=False)
 df[TIME_COL] = df[TIME_COL].dt.tz_localize(None)
 
-# 添加到达顺序
-df['arrival_seq'] = df.index
+# ---------------------------------------------------
+# ⭐ 1. 计算累计最大时间
+# ---------------------------------------------------
+# df['max_seen'] = df[TIME_COL].cummax()
+df['max_seen'] = df.groupby(TAXI_COL)[TIME_COL].cummax()
 
-# 计算理想顺序（按时间排序）
-df['event_rank'] = df[TIME_COL].rank(method='first').astype(int) - 1
-df['offset'] = df['arrival_seq'] - df['event_rank']
-import matplotlib.pyplot as plt
+# ---------------------------------------------------
+# ⭐ 2. 判断是否处于同一小时段
+#    同小时段 → 不计算延迟（delay=0）
+#    不同小时段 → 计算延迟
+# ---------------------------------------------------
+same_hour = df[TIME_COL].dt.hour == df['max_seen'].dt.hour
 
-fig, axs = plt.subplots(3, figsize=(14, 15))
+# 初始化 delay 列
+df['delay_minutes'] = 0.0
 
-# (1) 散点图：到达顺序 vs 实际时间
-axs[0].scatter(df['arrival_seq'], df[TIME_COL], s=1, alpha=0.5)
-axs[0].set_title('Arrival Sequence vs Actual Time')
-axs[0].set_ylabel('Actual Time')
-axs[0].set_xlabel('Arrival Sequence')
-axs[0].grid(True)
+# 仅在小时不同的行，计算 delay
+mask = ~same_hour
+df.loc[mask, 'delay_minutes'] = (
+    (df.loc[mask, 'max_seen'] - df.loc[mask, TIME_COL]).dt.total_seconds() / 60.0
+)
 
-# (2) 直方图：偏移量分布
-axs[1].hist(df['offset'], bins=2000, color='orange', alpha=0.7)
-axs[1].set_title('Distribution of Order Offset\n(>0: late, <0: early)')
-axs[1].set_xlabel('Offset (arrival_rank - event_rank)')
-axs[1].set_xlim(-15000, 15000)  # 只看 ±5000 范围内的乱序
-axs[1].grid(True)
+# ---------------------------------------------------
+# 3. 过滤迟到数据
+# ---------------------------------------------------
+late_data = df[df['delay_minutes'] > 0.1]
+#late_data=df
+q99 = late_data['delay_minutes'].quantile(0.99)
+late_data = late_data[late_data['delay_minutes'] <= q99]
 
-# (3) 滚动乱序率
-window = 1000
-df['is_out_of_order'] = df['offset'] != 0
-rolling_rate = df['is_out_of_order'].rolling(window=window).mean()
-axs[2].plot(rolling_rate, color='purple', linewidth=0.8)
-axs[2].set_title(f'Rolling Out-of-Order Rate (window={window})')
-axs[2].set_xlabel('Arrival Sequence')
-axs[2].set_ylabel('Fraction out-of-order')
-axs[2].grid(True)
+# ---------------------------------------------------
+# 4. 用 max_seen 的分钟数替代 delay_minutes
+# ---------------------------------------------------
+late_data['max_seen_minute'] = late_data['max_seen'].dt.minute
 
+
+
+# ---------------------------------------------------
+# 4. 绘制直方图
+# ---------------------------------------------------
+plt.figure(figsize=(10, 6))
+plt.hist(
+    late_data['max_seen_minute'],
+    bins=100,
+    edgecolor='black'
+)
+plt.xlabel("late time(minutes)")
+plt.ylabel("data count")
+plt.title("Late Time Distribution Histogram")
 plt.tight_layout()
 plt.show()

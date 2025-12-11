@@ -59,7 +59,7 @@ public class MaxTipsSlidesJob {
                         new Tuple2<>(value.taxiId, value.tip)
                 )
                 .returns(Types.TUPLE(Types.STRING, Types.FLOAT))
-                .setParallelism(4);
+                .setParallelism(1);
 
         // 6. 侧输出流 (迟到数据)
         OutputTag<Tuple2<String, Float>> lateTag = new OutputTag<Tuple2<String, Float>>("late"){};
@@ -90,7 +90,7 @@ public class MaxTipsSlidesJob {
                         out.collect(new Tuple4<>(windowStart, key, sum, delay));
                     }
                 })
-                .setParallelism(4);
+                .setParallelism(1);
 
         // 迟到数据统计
         DataStream<Tuple2<String, Float>> lateStream = sumById.getSideOutput(lateTag);
@@ -102,7 +102,7 @@ public class MaxTipsSlidesJob {
                 .setParallelism(1);
 
         lateCount.print("Total Late Data");
-        sumById.addSink(new SingleFileSink("C:\\Users\\Public\\slide_window_result_"+Integer.toString(watermarkMinutes)+".txt")).setParallelism(4);
+        sumById.addSink(new SingleFileSink("C:\\Users\\Public\\slide_window_result_"+Integer.toString(watermarkMinutes)+".txt")).setParallelism(1);
 
         // 10. 执行任务
         env.execute("Flink Watermark Experiment");
